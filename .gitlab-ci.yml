@@ -1,0 +1,43 @@
+stages:
+  - build
+  - test
+  - push
+  - deploy
+
+
+build_app:
+  image: docker:latest
+  stage: build
+  script:
+    - docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD" docker.io
+    - cd $CI_PROJECT_DIR/myapp
+    - docker build -t docker.io/$DOCKER_USERNAME/test:$CI_COMMIT_SHA .
+    - docker tag docker.io/$DOCKER_USERNAME/test:$CI_COMMIT_SHA docker.io/$DOCKER_USERNAME/test:latest
+
+
+test_app:
+  stage: test
+  image: python:3.8
+  script:
+    - export PYTHONPATH=$CI_PROJECT_DIR/myapp
+    - pip install -r $CI_PROJECT_DIR/myapp/requirements.txt
+    - pytest $CI_PROJECT_DIR/myapp/tests
+
+
+push_to_registry:
+  image: docker:latest
+  stage: push
+  script:
+    - echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin
+    - docker push docker.io/$DOCKER_USERNAME/test:$CI_COMMIT_SHA
+    - docker push docker.io/$DOCKER_USERNAME/test:latest
+  when: manual 
+
+deploy_app:
+  stage: deploy
+  image:  alpine/k8s:1.27.4
+  script:
+    - mkdir -p /root/.kube
+    - echo "$KUBE_CONFIG" | base64 -d > /root/.kube/config
+    - kubectl apply -f $CI_PROJECT_DIR/myapp/deployment.yaml 
+    
